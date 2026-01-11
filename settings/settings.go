@@ -4,6 +4,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/windows/registry"
+)
+
+const (
+	registryKey   = `Software\Microsoft\Windows\CurrentVersion\Run`
+	registryValue = "AutoSound"
 )
 
 // Settings хранит настройки приложения
@@ -11,6 +18,7 @@ type Settings struct {
 	OutputDeviceID string `json:"output_device_id"`
 	InputDeviceID  string `json:"input_device_id"`
 	AutoSwitch     bool   `json:"auto_switch"`
+	AutostartAsked bool   `json:"autostart_asked"`
 }
 
 // SettingsManager управляет настройками
@@ -78,4 +86,42 @@ func (sm *SettingsManager) GetSettings() *Settings {
 // GetFilePath возвращает путь к файлу настроек
 func (sm *SettingsManager) GetFilePath() string {
 	return sm.filePath
+}
+
+// IsAutostartEnabled проверяет включен ли автозапуск в реестре
+func IsAutostartEnabled() bool {
+	key, err := registry.OpenKey(registry.CURRENT_USER, registryKey, registry.QUERY_VALUE)
+	if err != nil {
+		return false
+	}
+	defer key.Close()
+
+	_, _, err = key.GetStringValue(registryValue)
+	return err == nil
+}
+
+// SetAutostart включает или выключает автозапуск
+func SetAutostart(enabled bool) error {
+	if enabled {
+		exePath, err := os.Executable()
+		if err != nil {
+			return err
+		}
+
+		key, err := registry.OpenKey(registry.CURRENT_USER, registryKey, registry.SET_VALUE)
+		if err != nil {
+			return err
+		}
+		defer key.Close()
+
+		return key.SetStringValue(registryValue, `"`+exePath+`"`)
+	} else {
+		key, err := registry.OpenKey(registry.CURRENT_USER, registryKey, registry.SET_VALUE)
+		if err != nil {
+			return err
+		}
+		defer key.Close()
+
+		return key.DeleteValue(registryValue)
+	}
 }

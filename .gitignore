@@ -5,6 +5,9 @@
 *.so
 *.dylib
 
+# Build output
+build/
+
 # Test binary
 *.test
 
@@ -26,3 +29,6 @@ rsrc.syso
 # OS files
 .DS_Store
 Thumbs.db
+
+# Wails
+frontend/node_modules/

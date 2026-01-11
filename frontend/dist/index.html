@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoSound</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body, #app {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            user-select: none;
+        }
+
+        .device-card {
+            transition: all 0.15s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .device-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .device-card.selected {
+            background: rgba(14, 165, 233, 0.2);
+            border-left-color: #0ea5e9;
+        }
+
+        .device-card.saved {
+            background: rgba(34, 197, 94, 0.15);
+            border-left-color: #22c55e;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 3px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 3px;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .pulse-dot {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .btn-save {
+            transition: all 0.2s ease;
+        }
+
+        .btn-save:not(:disabled):hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+        }
+
+        .btn-save:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-enter {
+            animation: modalEnter 0.2s ease-out;
+        }
+
+        @keyframes modalEnter {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+<body class="dark">
+    <!-- Autostart Modal -->
+    <div id="autostartModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center hidden">
+        <div class="modal-enter glass rounded-2xl p-5 mx-4 max-w-sm w-full">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-white">Автозапуск</h3>
+                    <p class="text-xs text-slate-400">Запускать при старте Windows?</p>
+                </div>
+            </div>
+            <p class="text-xs text-slate-400 mb-4">
+                AutoSound может запускаться автоматически при включении компьютера для постоянного контроля аудиоустройств.
+            </p>
+            <div class="flex gap-2">
+                <button onclick="enableAutostart()" class="flex-1 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white text-xs font-medium rounded-lg transition-colors">
+                    Включить
+                </button>
+                <button onclick="dismissAutostartModal()" class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-xs font-medium rounded-lg transition-colors">
+                    Не сейчас
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="app" class="h-full flex flex-col p-4">
+        <!-- Header (draggable) -->
+        <div class="flex items-center justify-between mb-4 flex-shrink-0" style="--wails-draggable:drag">
+            <div class="flex items-center gap-2.5" style="--wails-draggable:drag">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/20">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414 1.414m2.828-9.9a9 9 0 0112.728 0"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-base font-semibold text-white leading-tight">AutoSound</h1>
+                    <p class="text-xs text-slate-500">Выберите устройства по умолчанию</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-1" style="--wails-draggable:no-drag">
+                <button onclick="minimizeWindow()" class="p-2 rounded-lg hover:bg-white/10 transition-colors" title="Свернуть">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+                    </svg>
+                </button>
+                <button onclick="hideWindow()" class="p-2 rounded-lg hover:bg-white/10 transition-colors" title="В трей">
+                    <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
+                <button onclick="quitApp()" class="p-2 rounded-lg hover:bg-red-500/20 transition-colors" title="Закрыть">
+                    <svg class="w-4 h-4 text-slate-400 hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Device Lists -->
+        <div class="grid grid-cols-2 gap-3 flex-1 min-h-0 mb-3">
+            <!-- Output Devices -->
+            <div class="glass rounded-xl p-3 flex flex-col min-h-0">
+                <div class="flex items-center gap-2 mb-2 flex-shrink-0">
+                    <svg class="w-4 h-4 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M12 6v12"></path>
+                    </svg>
+                    <h2 class="text-xs font-medium text-slate-300">Вывод звука</h2>
+                </div>
+                <div id="outputDevices" class="flex-1 overflow-y-auto scrollbar-thin space-y-0.5 pr-1">
+                    <div class="text-slate-500 text-xs py-8 text-center">Загрузка...</div>
+                </div>
+            </div>
+
+            <!-- Input Devices -->
+            <div class="glass rounded-xl p-3 flex flex-col min-h-0">
+                <div class="flex items-center gap-2 mb-2 flex-shrink-0">
+                    <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4"></path>
+                    </svg>
+                    <h2 class="text-xs font-medium text-slate-300">Микрофон</h2>
+                </div>
+                <div id="inputDevices" class="flex-1 overflow-y-auto scrollbar-thin space-y-0.5 pr-1">
+                    <div class="text-slate-500 text-xs py-8 text-center">Загрузка...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Panel -->
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <!-- Auto-switch toggle -->
+            <div class="glass rounded-xl px-2.5 py-2 flex items-center gap-2 flex-1">
+                <div id="autoSwitchIndicator" class="w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot flex-shrink-0"></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-[11px] font-medium text-slate-300">Авто-восстановление</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                    <input type="checkbox" id="autoSwitchToggle" class="sr-only peer" onchange="toggleAutoSwitch()">
+                    <div class="w-8 h-4 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-600"></div>
+                </label>
+            </div>
+
+            <!-- Autostart toggle -->
+            <div class="glass rounded-xl px-2.5 py-2 flex items-center gap-2 flex-1">
+                <div id="autostartIndicator" class="w-1.5 h-1.5 rounded-full bg-slate-600 flex-shrink-0"></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-[11px] font-medium text-slate-300">Автозапуск</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                    <input type="checkbox" id="autostartToggle" class="sr-only peer" onchange="toggleAutostart()">
+                    <div class="w-8 h-4 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-primary-600"></div>
+                </label>
+            </div>
+
+            <!-- Save Button -->
+            <button id="saveBtn" onclick="saveSettings()" disabled
+                    class="btn-save px-4 py-2 bg-slate-700 text-white text-xs font-medium rounded-xl flex items-center gap-1.5 flex-shrink-0">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                <span id="saveBtnText">Сохранено</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let hasChanges = false;
+
+        async function refreshDevices() {
+            try {
+                const outputDevices = await window.go.main.App.GetOutputDevices();
+                const inputDevices = await window.go.main.App.GetInputDevices();
+                renderDevices('outputDevices', outputDevices, 'output');
+                renderDevices('inputDevices', inputDevices, 'input');
+                await checkChanges();
+            } catch (e) {
+                console.error('Failed to refresh:', e);
+            }
+        }
+
+        function renderDevices(containerId, devices, type) {
+            const container = document.getElementById(containerId);
+            if (!devices || devices.length === 0) {
+                container.innerHTML = '<div class="text-slate-500 text-xs py-8 text-center">Нет устройств</div>';
+                return;
+            }
+
+            container.innerHTML = devices.map(device => {
+                const isSelected = device.isPending && !device.isChosen;
+                const isSaved = device.isChosen && device.isPending;
+
+                let cardClass = 'device-card';
+                let textClass = 'text-slate-300';
+                let iconBg = 'bg-slate-700/50';
+                let icon = type === 'output'
+                    ? '<svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M9 9v6m-3-3h6"></path></svg>'
+                    : '<svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m-4 0h8m-4-8a3 3 0 100-6 3 3 0 000 6z"></path></svg>';
+
+                if (isSelected) {
+                    // Выбрано, но ещё не сохранено (синий)
+                    cardClass += ' selected';
+                    textClass = 'text-white font-medium';
+                    iconBg = 'bg-primary-500/30';
+                    icon = '<svg class="w-3.5 h-3.5 text-primary-400" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="4"></circle></svg>';
+                } else if (isSaved) {
+                    // Сохранено (зелёный)
+                    cardClass += ' saved';
+                    textClass = 'text-white font-medium';
+                    iconBg = 'bg-green-500/30';
+                    icon = '<svg class="w-3.5 h-3.5 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>';
+                }
+
+                const clickFn = type === 'output' ? 'selectOutputDevice' : 'selectInputDevice';
+
+                return `
+                <div class="${cardClass} px-2.5 py-2 rounded-lg cursor-pointer"
+                     onclick="${clickFn}('${device.id}')">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-6 h-6 rounded-md ${iconBg} flex items-center justify-center flex-shrink-0">
+                            ${icon}
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <span class="text-xs ${textClass} block truncate">${device.name}</span>
+                        </div>
+                        ${device.isDefault ? '<span class="text-[9px] text-slate-500 flex-shrink-0 bg-slate-700/50 px-1.5 py-0.5 rounded">sys</span>' : ''}
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        async function selectOutputDevice(deviceId) {
+            try {
+                await window.go.main.App.SelectOutputDevice(deviceId);
+                await refreshDevices();
+            } catch (e) {
+                console.error('Failed to select output:', e);
+            }
+        }
+
+        async function selectInputDevice(deviceId) {
+            try {
+                await window.go.main.App.SelectInputDevice(deviceId);
+                await refreshDevices();
+            } catch (e) {
+                console.error('Failed to select input:', e);
+            }
+        }
+
+        async function checkChanges() {
+            try {
+                hasChanges = await window.go.main.App.HasUnsavedChanges();
+                updateSaveButton();
+            } catch (e) {
+                console.error('Failed to check changes:', e);
+            }
+        }
+
+        function updateSaveButton() {
+            const btn = document.getElementById('saveBtn');
+            const text = document.getElementById('saveBtnText');
+
+            if (hasChanges) {
+                btn.disabled = false;
+                text.textContent = 'Сохранить';
+                btn.className = 'btn-save px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-xl flex items-center gap-2';
+            } else {
+                btn.disabled = true;
+                text.textContent = 'Сохранено';
+                btn.className = 'btn-save px-5 py-2.5 bg-slate-700 text-white text-sm font-medium rounded-xl flex items-center gap-2';
+            }
+        }
+
+        async function saveSettings() {
+            if (!hasChanges) return;
+
+            const btn = document.getElementById('saveBtn');
+            const text = document.getElementById('saveBtnText');
+
+            btn.disabled = true;
+            text.textContent = 'Сохранение...';
+
+            try {
+                await window.go.main.App.SaveSettings();
+                await refreshDevices();
+                text.textContent = 'Готово!';
+                setTimeout(updateSaveButton, 1000);
+            } catch (e) {
+                console.error('Failed to save:', e);
+                text.textContent = 'Ошибка';
+                btn.className = 'btn-save px-5 py-2.5 bg-red-600 text-white text-sm font-medium rounded-xl flex items-center gap-2';
+                setTimeout(() => {
+                    updateSaveButton();
+                    refreshDevices();
+                }, 2000);
+            }
+        }
+
+        async function toggleAutoSwitch() {
+            const toggle = document.getElementById('autoSwitchToggle');
+            const indicator = document.getElementById('autoSwitchIndicator');
+            try {
+                await window.go.main.App.SetAutoSwitch(toggle.checked);
+                indicator.className = toggle.checked
+                    ? 'w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot'
+                    : 'w-1.5 h-1.5 rounded-full bg-slate-600';
+            } catch (e) {
+                console.error('Failed to toggle:', e);
+            }
+        }
+
+        async function loadAutoSwitchState() {
+            try {
+                const enabled = await window.go.main.App.GetAutoSwitch();
+                document.getElementById('autoSwitchToggle').checked = enabled;
+                document.getElementById('autoSwitchIndicator').className = enabled
+                    ? 'w-1.5 h-1.5 rounded-full bg-green-500 pulse-dot flex-shrink-0'
+                    : 'w-1.5 h-1.5 rounded-full bg-slate-600 flex-shrink-0';
+            } catch (e) {}
+        }
+
+        async function loadAutostartState() {
+            try {
+                const enabled = await window.go.main.App.GetAutostartEnabled();
+                document.getElementById('autostartToggle').checked = enabled;
+                document.getElementById('autostartIndicator').className = enabled
+                    ? 'w-1.5 h-1.5 rounded-full bg-primary-500 pulse-dot flex-shrink-0'
+                    : 'w-1.5 h-1.5 rounded-full bg-slate-600 flex-shrink-0';
+            } catch (e) {}
+        }
+
+        async function toggleAutostart() {
+            const toggle = document.getElementById('autostartToggle');
+            const indicator = document.getElementById('autostartIndicator');
+            try {
+                await window.go.main.App.SetAutostartEnabled(toggle.checked);
+                indicator.className = toggle.checked
+                    ? 'w-1.5 h-1.5 rounded-full bg-primary-500 pulse-dot flex-shrink-0'
+                    : 'w-1.5 h-1.5 rounded-full bg-slate-600 flex-shrink-0';
+            } catch (e) {
+                console.error('Failed to toggle autostart:', e);
+                toggle.checked = !toggle.checked;
+            }
+        }
+
+        async function checkAutostartPrompt() {
+            try {
+                const shouldShow = await window.go.main.App.ShouldShowAutostartPrompt();
+                if (shouldShow) {
+                    document.getElementById('autostartModal').classList.remove('hidden');
+                }
+            } catch (e) {}
+        }
+
+        async function enableAutostart() {
+            try {
+                await window.go.main.App.SetAutostartEnabled(true);
+                await window.go.main.App.MarkAutostartAsked();
+                document.getElementById('autostartModal').classList.add('hidden');
+                await loadAutostartState();
+            } catch (e) {
+                console.error('Failed to enable autostart:', e);
+            }
+        }
+
+        async function dismissAutostartModal() {
+            try {
+                await window.go.main.App.MarkAutostartAsked();
+                document.getElementById('autostartModal').classList.add('hidden');
+            } catch (e) {}
+        }
+
+        function minimizeWindow() {
+            try { window.go.main.App.MinimizeWindow(); } catch (e) {}
+        }
+
+        function hideWindow() {
+            try { window.go.main.App.HideWindow(); } catch (e) {}
+        }
+
+        function quitApp() {
+            try { window.go.main.App.Quit(); } catch (e) {}
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(async () => {
+                await refreshDevices();
+                await loadAutoSwitchState();
+                await loadAutostartState();
+                await checkAutostartPrompt();
+            }, 100);
+        });
+    </script>
+</body>
+</html>
