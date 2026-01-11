@@ -16,7 +16,7 @@
 
 ### Из релизов
 
-Скачайте `AutoSound.exe` из [Releases](https://github.com/YOUR_USERNAME/AutoSound/releases) и запустите.
+Скачайте `AutoSound.exe` из [Releases](https://github.com/Gidroponik/AutoSoundWindows/releases/tag/Release) и запустите.
 
 ### Сборка из исходников
 
