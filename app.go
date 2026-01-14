@@ -248,6 +248,85 @@ func (a *App) Quit() {
 	wailsRuntime.Quit(a.ctx)
 }
 
+// VolumeInfo информация о громкости для фронтенда
+type VolumeInfo struct {
+	OutputVolume float32 `json:"outputVolume"`
+	InputVolume  float32 `json:"inputVolume"`
+	LockVolume   bool    `json:"lockVolume"`
+}
+
+// GetVolumes возвращает текущие уровни громкости
+func (a *App) GetVolumes() VolumeInfo {
+	if a.audioManager == nil {
+		return VolumeInfo{
+			OutputVolume: a.settings.OutputVolume,
+			InputVolume:  a.settings.InputVolume,
+			LockVolume:   a.settings.LockVolume,
+		}
+	}
+
+	outputVol, err := a.audioManager.GetDefaultOutputVolume()
+	if err != nil {
+		outputVol = a.settings.OutputVolume
+	}
+
+	inputVol, err := a.audioManager.GetDefaultInputVolume()
+	if err != nil {
+		inputVol = a.settings.InputVolume
+	}
+
+	return VolumeInfo{
+		OutputVolume: outputVol,
+		InputVolume:  inputVol,
+		LockVolume:   a.settings.LockVolume,
+	}
+}
+
+// SetOutputVolume устанавливает громкость вывода
+func (a *App) SetOutputVolume(level float32) error {
+	if a.audioManager == nil {
+		return nil
+	}
+
+	err := a.audioManager.SetDefaultOutputVolume(level)
+	if err != nil {
+		log.Printf("Failed to set output volume: %v", err)
+		return err
+	}
+
+	a.settings.OutputVolume = level
+	a.settingsManager.Save(a.settings)
+	return nil
+}
+
+// SetInputVolume устанавливает громкость ввода (микрофон)
+func (a *App) SetInputVolume(level float32) error {
+	if a.audioManager == nil {
+		return nil
+	}
+
+	err := a.audioManager.SetDefaultInputVolume(level)
+	if err != nil {
+		log.Printf("Failed to set input volume: %v", err)
+		return err
+	}
+
+	a.settings.InputVolume = level
+	a.settingsManager.Save(a.settings)
+	return nil
+}
+
+// GetLockVolume возвращает состояние блокировки громкости
+func (a *App) GetLockVolume() bool {
+	return a.settings.LockVolume
+}
+
+// SetLockVolume устанавливает блокировку громкости
+func (a *App) SetLockVolume(enabled bool) {
+	a.settings.LockVolume = enabled
+	a.settingsManager.Save(a.settings)
+}
+
 // GetAutostartEnabled возвращает состояние автозапуска
 func (a *App) GetAutostartEnabled() bool {
 	return settings.IsAutostartEnabled()
@@ -289,22 +368,48 @@ func (a *App) startDeviceNotifier() {
 		case <-a.stopNotifier:
 			return
 		case <-ticker.C:
-			if !a.settings.AutoSwitch {
-				continue
+			// Проверяем устройства (если включено автопереключение)
+			if a.settings.AutoSwitch {
+				// Проверяем устройство вывода
+				currentOutputID := audioMgr.GetCurrentDefaultOutputID()
+				if a.settings.OutputDeviceID != "" && currentOutputID != a.settings.OutputDeviceID {
+					log.Printf("Output device changed externally, restoring...")
+					audioMgr.SetDefaultDevice(a.settings.OutputDeviceID)
+				}
+
+				// Проверяем устройство ввода
+				currentInputID := audioMgr.GetCurrentDefaultInputID()
+				if a.settings.InputDeviceID != "" && currentInputID != a.settings.InputDeviceID {
+					log.Printf("Input device changed externally, restoring...")
+					audioMgr.SetDefaultDevice(a.settings.InputDeviceID)
+				}
 			}
 
-			// Проверяем устройство вывода
-			currentOutputID := audioMgr.GetCurrentDefaultOutputID()
-			if a.settings.OutputDeviceID != "" && currentOutputID != a.settings.OutputDeviceID {
-				log.Printf("Output device changed externally, restoring...")
-				audioMgr.SetDefaultDevice(a.settings.OutputDeviceID)
-			}
+			// Проверяем громкость (если включена блокировка)
+			if a.settings.LockVolume {
+				// Проверяем громкость вывода
+				if a.settings.OutputVolume > 0 {
+					currentOutputVol, err := audioMgr.GetDefaultOutputVolume()
+					if err == nil {
+						diff := currentOutputVol - a.settings.OutputVolume
+						if diff < -0.01 || diff > 0.01 {
+							log.Printf("Output volume changed externally (%.2f -> %.2f), restoring...", currentOutputVol, a.settings.OutputVolume)
+							audioMgr.SetDefaultOutputVolume(a.settings.OutputVolume)
+						}
+					}
+				}
 
-			// Проверяем устройство ввода
-			currentInputID := audioMgr.GetCurrentDefaultInputID()
-			if a.settings.InputDeviceID != "" && currentInputID != a.settings.InputDeviceID {
-				log.Printf("Input device changed externally, restoring...")
-				audioMgr.SetDefaultDevice(a.settings.InputDeviceID)
+				// Проверяем громкость ввода
+				if a.settings.InputVolume > 0 {
+					currentInputVol, err := audioMgr.GetDefaultInputVolume()
+					if err == nil {
+						diff := currentInputVol - a.settings.InputVolume
+						if diff < -0.01 || diff > 0.01 {
+							log.Printf("Input volume changed externally (%.2f -> %.2f), restoring...", currentInputVol, a.settings.InputVolume)
+							audioMgr.SetDefaultInputVolume(a.settings.InputVolume)
+						}
+					}
+				}
 			}
 		}
 	}

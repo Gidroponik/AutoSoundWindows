@@ -14,8 +14,16 @@ export function GetInputDevices() {
   return window['go']['main']['App']['GetInputDevices']();
 }
 
+export function GetLockVolume() {
+  return window['go']['main']['App']['GetLockVolume']();
+}
+
 export function GetOutputDevices() {
   return window['go']['main']['App']['GetOutputDevices']();
+}
+
+export function GetVolumes() {
+  return window['go']['main']['App']['GetVolumes']();
 }
 
 export function HasUnsavedChanges() {
@@ -60,6 +68,18 @@ export function SetAutoSwitch(arg1) {
 
 export function SetAutostartEnabled(arg1) {
   return window['go']['main']['App']['SetAutostartEnabled'](arg1);
+}
+
+export function SetInputVolume(arg1) {
+  return window['go']['main']['App']['SetInputVolume'](arg1);
+}
+
+export function SetLockVolume(arg1) {
+  return window['go']['main']['App']['SetLockVolume'](arg1);
+}
+
+export function SetOutputVolume(arg1) {
+  return window['go']['main']['App']['SetOutputVolume'](arg1);
 }
 
 export function ShouldShowAutostartPrompt() {

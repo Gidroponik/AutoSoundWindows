@@ -8,7 +8,11 @@ export function GetAutostartEnabled():Promise<boolean>;
 
 export function GetInputDevices():Promise<Array<main.AudioDeviceInfo>>;
 
+export function GetLockVolume():Promise<boolean>;
+
 export function GetOutputDevices():Promise<Array<main.AudioDeviceInfo>>;
+
+export function GetVolumes():Promise<main.VolumeInfo>;
 
 export function HasUnsavedChanges():Promise<boolean>;
 
@@ -31,6 +35,12 @@ export function SelectOutputDevice(arg1:string):Promise<void>;
 export function SetAutoSwitch(arg1:boolean):Promise<void>;
 
 export function SetAutostartEnabled(arg1:boolean):Promise<void>;
+
+export function SetInputVolume(arg1:number):Promise<void>;
+
+export function SetLockVolume(arg1:boolean):Promise<void>;
+
+export function SetOutputVolume(arg1:number):Promise<void>;
 
 export function ShouldShowAutostartPrompt():Promise<boolean>;
 

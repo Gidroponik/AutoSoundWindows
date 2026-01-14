@@ -15,10 +15,13 @@ const (
 
 // Settings хранит настройки приложения
 type Settings struct {
-	OutputDeviceID string `json:"output_device_id"`
-	InputDeviceID  string `json:"input_device_id"`
-	AutoSwitch     bool   `json:"auto_switch"`
-	AutostartAsked bool   `json:"autostart_asked"`
+	OutputDeviceID string  `json:"output_device_id"`
+	InputDeviceID  string  `json:"input_device_id"`
+	OutputVolume   float32 `json:"output_volume"`
+	InputVolume    float32 `json:"input_volume"`
+	LockVolume     bool    `json:"lock_volume"`
+	AutoSwitch     bool    `json:"auto_switch"`
+	AutostartAsked bool    `json:"autostart_asked"`
 }
 
 // SettingsManager управляет настройками

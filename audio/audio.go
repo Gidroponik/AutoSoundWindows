@@ -52,6 +52,11 @@ type AudioDevice struct {
 	FriendlyName string
 }
 
+// IID для IAudioEndpointVolume
+var (
+	IID_IAudioEndpointVolume = ole.NewGUID("{5CDF2C82-841E-4546-9722-0CF74078229A}")
+)
+
 // IMMDeviceEnumerator интерфейс
 type IMMDeviceEnumerator struct {
 	ole.IUnknown
@@ -124,6 +129,33 @@ var (
 	}
 )
 
+// IAudioEndpointVolume интерфейс для управления громкостью
+type IAudioEndpointVolume struct {
+	ole.IUnknown
+}
+
+type IAudioEndpointVolumeVtbl struct {
+	ole.IUnknownVtbl
+	RegisterControlChangeNotify   uintptr
+	UnregisterControlChangeNotify uintptr
+	GetChannelCount               uintptr
+	SetMasterVolumeLevel          uintptr
+	SetMasterVolumeLevelScalar    uintptr
+	GetMasterVolumeLevel          uintptr
+	GetMasterVolumeLevelScalar    uintptr
+	SetChannelVolumeLevel         uintptr
+	SetChannelVolumeLevelScalar   uintptr
+	GetChannelVolumeLevel         uintptr
+	GetChannelVolumeLevelScalar   uintptr
+	SetMute                       uintptr
+	GetMute                       uintptr
+	GetVolumeStepInfo             uintptr
+	VolumeStepUp                  uintptr
+	VolumeStepDown                uintptr
+	QueryHardwareSupport          uintptr
+	GetVolumeRange                uintptr
+}
+
 // IPolicyConfig интерфейс для установки устройства по умолчанию
 type IPolicyConfig struct {
 	ole.IUnknown
@@ -151,8 +183,8 @@ type AudioManager struct {
 }
 
 var (
-	modole32               = syscall.NewLazyDLL("ole32.dll")
-	procCoCreateInstance   = modole32.NewProc("CoCreateInstance")
+	modole32             = syscall.NewLazyDLL("ole32.dll")
+	procCoCreateInstance = modole32.NewProc("CoCreateInstance")
 )
 
 const (
@@ -401,4 +433,149 @@ func utf16PtrToString(ptr *uint16) string {
 	// Создаем слайс
 	slice := unsafe.Slice(ptr, length)
 	return syscall.UTF16ToString(slice)
+}
+
+// GetDeviceVolume возвращает громкость устройства (0.0 - 1.0)
+func (am *AudioManager) GetDeviceVolume(deviceID string) (float32, error) {
+	device, err := am.getDeviceByID(deviceID)
+	if err != nil {
+		return 0, err
+	}
+	defer device.Release()
+
+	volume, err := am.getEndpointVolume(device)
+	if err != nil {
+		return 0, err
+	}
+	defer volume.Release()
+
+	vtbl := (*IAudioEndpointVolumeVtbl)(unsafe.Pointer(volume.RawVTable))
+
+	var level float32
+	hr, _, _ := syscall.SyscallN(
+		vtbl.GetMasterVolumeLevelScalar,
+		uintptr(unsafe.Pointer(volume)),
+		uintptr(unsafe.Pointer(&level)),
+	)
+	if hr != 0 {
+		return 0, fmt.Errorf("failed to get volume level: %x", hr)
+	}
+
+	return level, nil
+}
+
+// SetDeviceVolume устанавливает громкость устройства (0.0 - 1.0)
+func (am *AudioManager) SetDeviceVolume(deviceID string, level float32) error {
+	device, err := am.getDeviceByID(deviceID)
+	if err != nil {
+		return err
+	}
+	defer device.Release()
+
+	volume, err := am.getEndpointVolume(device)
+	if err != nil {
+		return err
+	}
+	defer volume.Release()
+
+	vtbl := (*IAudioEndpointVolumeVtbl)(unsafe.Pointer(volume.RawVTable))
+
+	// Ограничиваем значение
+	if level < 0 {
+		level = 0
+	}
+	if level > 1 {
+		level = 1
+	}
+
+	hr, _, _ := syscall.SyscallN(
+		vtbl.SetMasterVolumeLevelScalar,
+		uintptr(unsafe.Pointer(volume)),
+		uintptr(*(*uint32)(unsafe.Pointer(&level))),
+		0, // pguidEventContext
+	)
+	if hr != 0 {
+		return fmt.Errorf("failed to set volume level: %x", hr)
+	}
+
+	return nil
+}
+
+// GetDefaultOutputVolume возвращает громкость устройства вывода по умолчанию
+func (am *AudioManager) GetDefaultOutputVolume() (float32, error) {
+	deviceID := am.GetCurrentDefaultOutputID()
+	if deviceID == "" {
+		return 0, fmt.Errorf("no default output device")
+	}
+	return am.GetDeviceVolume(deviceID)
+}
+
+// GetDefaultInputVolume возвращает громкость устройства ввода по умолчанию
+func (am *AudioManager) GetDefaultInputVolume() (float32, error) {
+	deviceID := am.GetCurrentDefaultInputID()
+	if deviceID == "" {
+		return 0, fmt.Errorf("no default input device")
+	}
+	return am.GetDeviceVolume(deviceID)
+}
+
+// SetDefaultOutputVolume устанавливает громкость устройства вывода по умолчанию
+func (am *AudioManager) SetDefaultOutputVolume(level float32) error {
+	deviceID := am.GetCurrentDefaultOutputID()
+	if deviceID == "" {
+		return fmt.Errorf("no default output device")
+	}
+	return am.SetDeviceVolume(deviceID, level)
+}
+
+// SetDefaultInputVolume устанавливает громкость устройства ввода по умолчанию
+func (am *AudioManager) SetDefaultInputVolume(level float32) error {
+	deviceID := am.GetCurrentDefaultInputID()
+	if deviceID == "" {
+		return fmt.Errorf("no default input device")
+	}
+	return am.SetDeviceVolume(deviceID, level)
+}
+
+// getDeviceByID получает устройство по ID
+func (am *AudioManager) getDeviceByID(deviceID string) (*IMMDevice, error) {
+	vtbl := (*IMMDeviceEnumeratorVtbl)(unsafe.Pointer(am.enumerator.RawVTable))
+
+	deviceIDPtr, err := syscall.UTF16PtrFromString(deviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	var device *IMMDevice
+	hr, _, _ := syscall.SyscallN(
+		vtbl.GetDevice,
+		uintptr(unsafe.Pointer(am.enumerator)),
+		uintptr(unsafe.Pointer(deviceIDPtr)),
+		uintptr(unsafe.Pointer(&device)),
+	)
+	if hr != 0 {
+		return nil, fmt.Errorf("failed to get device: %x", hr)
+	}
+
+	return device, nil
+}
+
+// getEndpointVolume получает интерфейс IAudioEndpointVolume для устройства
+func (am *AudioManager) getEndpointVolume(device *IMMDevice) (*IAudioEndpointVolume, error) {
+	vtbl := (*IMMDeviceVtbl)(unsafe.Pointer(device.RawVTable))
+
+	var volume *IAudioEndpointVolume
+	hr, _, _ := syscall.SyscallN(
+		vtbl.Activate,
+		uintptr(unsafe.Pointer(device)),
+		uintptr(unsafe.Pointer(IID_IAudioEndpointVolume)),
+		uintptr(CLSCTX_ALL),
+		0,
+		uintptr(unsafe.Pointer(&volume)),
+	)
+	if hr != 0 {
+		return nil, fmt.Errorf("failed to activate IAudioEndpointVolume: %x", hr)
+	}
+
+	return volume, nil
 }
